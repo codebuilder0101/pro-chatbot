@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
@@ -11,14 +11,14 @@ export const Route = createFileRoute("/_authenticated/app")({
 type NavItem = { to: string; label: string; adminOnly?: boolean };
 const NAV: NavItem[] = [
   { to: "/app", label: "Chat" },
-  { to: "/app/voices", label: "Voices" },
+  { to: "/app/settings", label: "Settings" },
   { to: "/app/billing", label: "Billing" },
   { to: "/app/admin", label: "Admin", adminOnly: true },
 ];
 
 function AppShell() {
-  const router = useRouter();
   const navigate = useNavigate();
+  const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string>("");
 
@@ -73,7 +73,6 @@ function AppShell() {
 
   const charPct = usage?.plan ? Math.min(100, (usage.chars / usage.plan.char_quota) * 100) : 0;
   const audioPct = usage?.plan ? Math.min(100, (usage.seconds / usage.plan.audio_seconds_quota) * 100) : 0;
-  const currentPath = router.state.location.pathname;
 
   return (
     <div className="min-h-screen bg-paper text-ink flex">

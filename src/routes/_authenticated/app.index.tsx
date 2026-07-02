@@ -34,7 +34,6 @@ function ChatPage() {
   const [activePersonality, setActivePersonality] = useState<Personality | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState("");
-  const [voiceMode, setVoiceMode] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +46,40 @@ function ChatPage() {
         .select("id, name, avatar_emoji, voice_id, voices:voices(name, elevenlabs_id)")
         .order("created_at", { ascending: false });
       return (data ?? []) as unknown as Personality[];
+    },
+  });
+
+  // Preferred speaker voice from Settings (used when no persona voice is set)
+  const { data: settingsVoice } = useQuery({
+    queryKey: ["settings-voice"],
+    refetchOnWindowFocus: true,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from("user_settings")
+        .select("voices:voice_id(name, elevenlabs_id)")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) return null;
+      return (data as unknown as { voices?: { name: string; elevenlabs_id: string } } | null)?.voices ?? null;
+    },
+  });
+
+  // Most recent conversation for this user (so history survives reloads)
+  const latestConv = useQuery({
+    queryKey: ["latest-conversation"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.id ?? null;
     },
   });
 
@@ -64,14 +97,21 @@ function ChatPage() {
     },
   });
 
-  // Auto-create conversation on first load
+  // Resume the most recent conversation on load. A new one is created lazily on
+  // first send (see ensureConversation), so we never make empty conversations.
   useEffect(() => {
     if (conversationId) return;
-    (async () => {
-      const conv = await createFn({ data: { personalityId: activePersonality?.id ?? null } });
-      setConversationId(conv.id);
-    })();
-  }, [conversationId, createFn, activePersonality?.id]);
+    if (latestConv.data) setConversationId(latestConv.data);
+  }, [conversationId, latestConv.data]);
+
+  // Guarantee a conversation exists, creating one on demand. Returns its id.
+  const ensureConversation = async () => {
+    if (conversationId) return conversationId;
+    const conv = await createFn({ data: { personalityId: activePersonality?.id ?? null } });
+    setConversationId(conv.id);
+    qc.invalidateQueries({ queryKey: ["latest-conversation"] });
+    return conv.id;
+  };
 
   // Auto-pick first personality
   useEffect(() => {
@@ -86,19 +126,27 @@ function ChatPage() {
 
   const sendMut = useMutation({
     mutationFn: async (text: string) => {
-      if (!conversationId) throw new Error("No conversation");
-      return sendFn({
-        data: { conversationId, personalityId: activePersonality?.id ?? null, message: text },
+      const convId = await ensureConversation();
+      const result = await sendFn({
+        data: { conversationId: convId, personalityId: activePersonality?.id ?? null, message: text },
       });
+      return { convId, result };
     },
-    onSuccess: async (result) => {
-      qc.invalidateQueries({ queryKey: ["messages", conversationId] });
+    onSuccess: async ({ convId, result }) => {
+      qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["usage"] });
-      if (voiceMode && result?.message) {
+      if (result?.message) {
         await playTts(result.message.id, result.message.content);
       }
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+    onError: (e) => {
+      // The user's message is persisted before the AI call, so surface it even on failure.
+      qc.invalidateQueries({ queryKey: ["messages"] });
+      console.error("[chat] send failed:", e);
+      const msg =
+        e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e);
+      toast.error(msg || "Send failed");
+    },
   });
 
   const playTts = async (msgId: string, text: string) => {
@@ -106,7 +154,7 @@ function ChatPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not signed in");
-      const voice = activePersonality?.voices?.elevenlabs_id || "alloy";
+      const voice = activePersonality?.voices?.elevenlabs_id || settingsVoice?.elevenlabs_id || "alloy";
       const resp = await fetch("/api/tts", {
         method: "POST",
         headers: {
@@ -149,8 +197,8 @@ function ChatPage() {
               {activePersonality?.name ?? "Untitled agent"}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <ModeToggle voiceMode={voiceMode} setVoiceMode={setVoiceMode} />
+          <div className="font-mono-label text-muted-foreground text-right">
+            VOICE / {(activePersonality?.voices?.name ?? settingsVoice?.name ?? "Alloy").toUpperCase()}
           </div>
         </header>
 
@@ -181,6 +229,11 @@ function ChatPage() {
                 const text = input.trim();
                 setInput("");
                 sendMut.mutate(text);
+              }}
+              onVoiceSubmit={(text) => {
+                const trimmed = text.trim();
+                if (!trimmed || sendMut.isPending) return;
+                sendMut.mutate(trimmed);
               }}
               busy={sendMut.isPending}
             />
@@ -238,8 +291,8 @@ function EmptyState({ personality }: { personality: Personality | null }) {
       </h2>
       <p className="text-muted-foreground mt-4 max-w-md mx-auto">
         {personality
-          ? `You're talking to ${personality.name}. Toggle voice mode to hear them.`
-          : "Pick or create a persona to get started."}
+          ? `You're talking to ${personality.name}. Replies play aloud automatically — or tap the mic to speak.`
+          : "Type a message, or tap the mic to start a voice conversation."}
       </p>
     </div>
   );
@@ -305,24 +358,15 @@ function PlayIcon() {
   return <svg width="10" height="10" viewBox="0 0 14 14" fill="currentColor"><path d="M2 1.5v11l10-5.5z" /></svg>;
 }
 
-function ModeToggle({ voiceMode, setVoiceMode }: { voiceMode: boolean; setVoiceMode: (v: boolean) => void }) {
-  return (
-    <div className="hairline flex border border-ink/25">
-      <button
-        onClick={() => setVoiceMode(false)}
-        className={`font-mono-label px-3 py-2 ${!voiceMode ? "bg-ink text-paper" : ""}`}
-      >TEXT</button>
-      <button
-        onClick={() => setVoiceMode(true)}
-        className={`font-mono-label px-3 py-2 ${voiceMode ? "bg-accent text-ink" : ""}`}
-      >VOICE</button>
-    </div>
-  );
-}
-
 function Composer({
-  value, onChange, onSubmit, busy,
-}: { value: string; onChange: (v: string) => void; onSubmit: () => void; busy: boolean }) {
+  value, onChange, onSubmit, onVoiceSubmit, busy,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onVoiceSubmit: (text: string) => void;
+  busy: boolean;
+}) {
   return (
     <form
       onSubmit={(e) => { e.preventDefault(); onSubmit(); }}
@@ -339,6 +383,7 @@ function Composer({
         className="flex-1 resize-none bg-transparent px-2 py-2 outline-none placeholder:text-ink/30"
         style={{ minHeight: 36, maxHeight: 200 }}
       />
+      <MicButton disabled={busy} onTranscript={onVoiceSubmit} />
       <button
         type="submit" disabled={busy || !value.trim()}
         className="hairline border border-ink bg-ink px-4 py-2 text-paper font-mono-label hover:bg-accent hover:text-ink disabled:opacity-40 disabled:hover:bg-ink disabled:hover:text-paper"
@@ -346,5 +391,71 @@ function Composer({
         {busy ? "..." : "SEND"}
       </button>
     </form>
+  );
+}
+
+function MicButton({ disabled, onTranscript }: { disabled: boolean; onTranscript: (text: string) => void }) {
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<any>(null);
+
+  useEffect(() => () => recRef.current?.abort?.(), []);
+
+  const toggle = () => {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      toast.error("Voice input isn't supported in this browser. Try Chrome or Edge.");
+      return;
+    }
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e: any) => {
+      const text = Array.from(e.results)
+        .map((r: any) => r[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
+      if (text) onTranscript(text);
+    };
+    rec.onerror = (e: any) => {
+      if (e.error !== "aborted" && e.error !== "no-speech") {
+        toast.error(`Voice error: ${e.error}`);
+      }
+      setListening(false);
+    };
+    rec.onend = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={disabled}
+      title={listening ? "Listening… click to stop" : "Speak to send"}
+      aria-pressed={listening}
+      className={`hairline border px-3 py-2 font-mono-label transition disabled:opacity-40 ${
+        listening
+          ? "border-accent bg-accent text-ink animate-pulse"
+          : "border-ink/25 hover:bg-ink hover:text-paper"
+      }`}
+    >
+      {listening ? "● REC" : <MicIcon />}
+    </button>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="12" height="14" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true">
+      <path d="M6 0a2.5 2.5 0 0 0-2.5 2.5v5a2.5 2.5 0 0 0 5 0v-5A2.5 2.5 0 0 0 6 0z" />
+      <path d="M10 7a4 4 0 0 1-8 0H.8a5.2 5.2 0 0 0 4.4 5.14V16h1.6v-3.86A5.2 5.2 0 0 0 11.2 7H10z" />
+    </svg>
   );
 }

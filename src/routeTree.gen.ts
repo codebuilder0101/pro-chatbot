@@ -15,7 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/app.index'
-import { Route as AuthenticatedAppVoicesRouteImport } from './routes/_authenticated/app.voices'
+import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenticated/app.settings'
 import { Route as AuthenticatedAppBillingRouteImport } from './routes/_authenticated/app.billing'
 import { Route as AuthenticatedAppAdminRouteImport } from './routes/_authenticated/app.admin'
 
@@ -48,11 +48,12 @@ const AuthenticatedAppIndexRoute = AuthenticatedAppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAppRoute,
 } as any)
-const AuthenticatedAppVoicesRoute = AuthenticatedAppVoicesRouteImport.update({
-  id: '/voices',
-  path: '/voices',
-  getParentRoute: () => AuthenticatedAppRoute,
-} as any)
+const AuthenticatedAppSettingsRoute =
+  AuthenticatedAppSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppBillingRoute = AuthenticatedAppBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -71,7 +72,7 @@ export interface FileRoutesByFullPath {
   '/api/tts': typeof ApiTtsRoute
   '/app/admin': typeof AuthenticatedAppAdminRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
-  '/app/voices': typeof AuthenticatedAppVoicesRoute
+  '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app/': typeof AuthenticatedAppIndexRoute
 }
 export interface FileRoutesByTo {
@@ -80,7 +81,7 @@ export interface FileRoutesByTo {
   '/api/tts': typeof ApiTtsRoute
   '/app/admin': typeof AuthenticatedAppAdminRoute
   '/app/billing': typeof AuthenticatedAppBillingRoute
-  '/app/voices': typeof AuthenticatedAppVoicesRoute
+  '/app/settings': typeof AuthenticatedAppSettingsRoute
   '/app': typeof AuthenticatedAppIndexRoute
 }
 export interface FileRoutesById {
@@ -92,7 +93,7 @@ export interface FileRoutesById {
   '/api/tts': typeof ApiTtsRoute
   '/_authenticated/app/admin': typeof AuthenticatedAppAdminRoute
   '/_authenticated/app/billing': typeof AuthenticatedAppBillingRoute
-  '/_authenticated/app/voices': typeof AuthenticatedAppVoicesRoute
+  '/_authenticated/app/settings': typeof AuthenticatedAppSettingsRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
 }
 export interface FileRouteTypes {
@@ -104,7 +105,7 @@ export interface FileRouteTypes {
     | '/api/tts'
     | '/app/admin'
     | '/app/billing'
-    | '/app/voices'
+    | '/app/settings'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -113,7 +114,7 @@ export interface FileRouteTypes {
     | '/api/tts'
     | '/app/admin'
     | '/app/billing'
-    | '/app/voices'
+    | '/app/settings'
     | '/app'
   id:
     | '__root__'
@@ -124,7 +125,7 @@ export interface FileRouteTypes {
     | '/api/tts'
     | '/_authenticated/app/admin'
     | '/_authenticated/app/billing'
-    | '/_authenticated/app/voices'
+    | '/_authenticated/app/settings'
     | '/_authenticated/app/'
   fileRoutesById: FileRoutesById
 }
@@ -179,11 +180,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppIndexRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
-    '/_authenticated/app/voices': {
-      id: '/_authenticated/app/voices'
-      path: '/voices'
-      fullPath: '/app/voices'
-      preLoaderRoute: typeof AuthenticatedAppVoicesRouteImport
+    '/_authenticated/app/settings': {
+      id: '/_authenticated/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AuthenticatedAppSettingsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
     '/_authenticated/app/billing': {
@@ -206,14 +207,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAppRouteChildren {
   AuthenticatedAppAdminRoute: typeof AuthenticatedAppAdminRoute
   AuthenticatedAppBillingRoute: typeof AuthenticatedAppBillingRoute
-  AuthenticatedAppVoicesRoute: typeof AuthenticatedAppVoicesRoute
+  AuthenticatedAppSettingsRoute: typeof AuthenticatedAppSettingsRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
 }
 
 const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppAdminRoute: AuthenticatedAppAdminRoute,
   AuthenticatedAppBillingRoute: AuthenticatedAppBillingRoute,
-  AuthenticatedAppVoicesRoute: AuthenticatedAppVoicesRoute,
+  AuthenticatedAppSettingsRoute: AuthenticatedAppSettingsRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
 }
 

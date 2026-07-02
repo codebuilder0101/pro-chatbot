@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
 /**
- * POST /api/tts — proxies to Lovable AI Gateway (openai/gpt-4o-mini-tts).
+ * POST /api/tts — proxies to OpenAI text-to-speech (gpt-4o-mini-tts).
  * Returns raw MP3 bytes. Requires bearer token of an authenticated user.
  * Body: { text: string, voice?: string }
  */
@@ -31,17 +31,17 @@ export const Route = createFileRoute("/api/tts")({
         const voice = body.voice || "alloy";
         if (!text) return new Response("Missing text", { status: 400 });
 
-        const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey) return new Response("Missing LOVABLE_API_KEY", { status: 500 });
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) return new Response("Missing OPENAI_API_KEY", { status: 500 });
 
-        const r = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
+        const r = await fetch("https://api.openai.com/v1/audio/speech", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: "openai/gpt-4o-mini-tts",
+            model: "gpt-4o-mini-tts",
             input: text,
             voice,
             response_format: "mp3",

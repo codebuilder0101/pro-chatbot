@@ -96,6 +96,101 @@ export type Database = {
           },
         ]
       }
+      credits: {
+        Row: {
+          balance: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      credit_purchases: {
+        Row: {
+          amount_crypto: number | null
+          amount_usd: number
+          asset: string
+          created_at: string
+          credits: number
+          from_address: string | null
+          id: string
+          network: string | null
+          status: string
+          to_address: string | null
+          tx_hash: string | null
+          tx_reference: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_crypto?: number | null
+          amount_usd?: number
+          asset?: string
+          created_at?: string
+          credits: number
+          from_address?: string | null
+          id?: string
+          network?: string | null
+          status?: string
+          to_address?: string | null
+          tx_hash?: string | null
+          tx_reference?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_crypto?: number | null
+          amount_usd?: number
+          asset?: string
+          created_at?: string
+          credits?: number
+          from_address?: string | null
+          id?: string
+          network?: string | null
+          status?: string
+          to_address?: string | null
+          tx_hash?: string | null
+          tx_reference?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          speaker_age: number | null
+          updated_at: string
+          user_id: string
+          voice_id: string | null
+        }
+        Insert: {
+          speaker_age?: number | null
+          updated_at?: string
+          user_id: string
+          voice_id?: string | null
+        }
+        Update: {
+          speaker_age?: number | null
+          updated_at?: string
+          user_id?: string
+          voice_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_settings_voice_id_fkey"
+            columns: ["voice_id"]
+            isOneToOne: false
+            referencedRelation: "voices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           audio_url: string | null
@@ -342,6 +437,19 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      redeem_crypto_payment: {
+        Args: {
+          _user_id: string
+          _credits: number
+          _amount_usd: number
+          _asset: string
+          _network: string
+          _tx_hash: string
+          _from_address: string
+          _amount_crypto: number
+        }
+        Returns: number
       }
     }
     Enums: {
