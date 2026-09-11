@@ -1,0 +1,18 @@
+services:
+  token-server:
+    build: .
+    command: ["token-server"]
+    env_file: .env
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  agent:
+    build: .
+    command: ["agent"]
+    env_file: .env
+    restart: unless-stopped
+    # 5 sessoes simultaneas de fase 1 cabem em um worker. Escalar por replicas,
+    # nao por threads: cada sessao segura uma conexao WebRTC.
+    deploy:
+      replicas: 1

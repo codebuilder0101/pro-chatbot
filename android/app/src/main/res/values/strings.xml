@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">IARA</string>
+
+    <string name="home_tagline">Sua assistente por voz</string>
+    <string name="home_start">Conversar com a IARA</string>
+    <string name="home_hint">Toque, fale normalmente e ela responde. Pode interromper a qualquer momento.</string>
+
+    <string name="perm_title">Precisamos do microfone</string>
+    <string name="perm_body">Sem acesso ao microfone a IARA nao consegue te ouvir. Libere a permissao para continuar.</string>
+    <string name="perm_grant">Permitir</string>
+    <string name="perm_settings">Abrir configuracoes</string>
+
+    <string name="state_connecting">Conectando</string>
+    <string name="state_waiting_avatar">Chamando a IARA</string>
+    <string name="state_listening">Ouvindo</string>
+    <string name="state_thinking">Pensando</string>
+    <string name="state_speaking">Falando</string>
+    <string name="state_reconnecting">Reconectando</string>
+
+    <string name="call_mute">Mudo</string>
+    <string name="call_unmute">Ativar microfone</string>
+    <string name="call_end">Encerrar</string>
+
+    <string name="end_title">Conversa encerrada</string>
+    <string name="end_again">Conversar de novo</string>
+    <string name="end_reason_time">A sessao chegou ao tempo maximo.</string>
+    <string name="end_reason_idle">Encerramos por inatividade.</string>
+    <string name="end_reason_network">Perdemos a conexao e nao consegui voltar.</string>
+    <string name="end_reason_user">Ate a proxima.</string>
+
+    <string name="error_title">Nao consegui conectar</string>
+    <string name="error_retry">Tentar de novo</string>
+
+    <string name="notif_channel">Chamada em andamento</string>
+    <string name="notif_title">Conversa com a IARA</string>
+    <string name="notif_text">Microfone ativo. Toque para voltar.</string>
+</resources>

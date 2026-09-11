@@ -1,0 +1,75 @@
+# Stack do backend da IARA no VPS.
+#
+# Sobe tres coisas:
+#   caddy         TLS automatico na frente do token server
+#   token-server  emite o token de sala para o app
+#   agent         o worker que entra na sala, ouve, fala com o n8n e liga o avatar
+#
+# O LiveKit NAO esta aqui de proposito. Use o gerador oficial deles, que ja
+# resolve TLS, TURN e Redis:
+#     docker run --rm -it -v$PWD:/output livekit/generate
+# Ele produz um compose proprio, que roda lado a lado com este.
+#
+# Rodar:
+#     cd /opt/iara/server
+#     docker compose -f docker-compose.prod.yml up -d --build
+#
+# Ele fica aqui, e nao em deploy/, de proposito: o Compose usa o diretorio do
+# arquivo como raiz do projeto, entao daqui o `context: .` aponta para server/
+# e o `env_file: .env` acha o .env certo.
+
+name: iara
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # dominio do token server, ex.: api.suaempresa.com.br
+      TOKEN_SERVER_DOMAIN: ${TOKEN_SERVER_DOMAIN:?defina TOKEN_SERVER_DOMAIN no .env}
+    depends_on:
+      - token-server
+
+  token-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["token-server"]
+    env_file: .env
+    restart: unless-stopped
+    # Sem "ports": quem fala com a internet e o Caddy. O token server so e
+    # alcancavel de dentro da rede do compose.
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["agent"]
+    env_file: .env
+    restart: unless-stopped
+    # O agente so faz conexoes de saida: LiveKit, Deepgram, ElevenLabs, n8n e
+    # bitHuman. Nenhuma porta precisa ser aberta para ele.
+    #
+    # Escalar e' aumentar replicas, nunca threads: cada conversa segura uma
+    # conexao WebRTC propria. Uma replica da conta das 5 sessoes da fase 1.
+    deploy:
+      replicas: 1
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,32 @@
+# TLS automatico via Let's Encrypt para o token server.
+#
+# Requisito: o dominio em TOKEN_SERVER_DOMAIN precisa apontar (registro A) para
+# o IP do VPS ANTES de subir, senao a emissao do certificado falha.
+#
+# Por que HTTPS importa aqui: o app Android so aceita HTTP em claro para
+# 10.0.2.2 e localhost, que e o emulador. Em aparelho de verdade, sem HTTPS a
+# chamada ao /token nao sai.
+
+{$TOKEN_SERVER_DOMAIN} {
+	encode gzip
+
+	# /health fica aberto: e' so' um retrato da configuracao, nao devolve chave
+	# nenhuma, e serve de sonda para monitoramento.
+	handle /health {
+		reverse_proxy token-server:8080
+	}
+
+	handle /token {
+		reverse_proxy token-server:8080
+	}
+
+	# Qualquer outra rota nao existe. Melhor 404 do que expor o que houver.
+	handle {
+		respond "not found" 404
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

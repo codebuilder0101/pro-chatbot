@@ -1,0 +1,19 @@
+# Sem isto o contexto do build leva 584 MB de .venv e, pior, manda o .env com
+# as chaves para o daemon do Docker. As chaves entram por env_file em tempo de
+# execucao, nunca dentro da imagem.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+.env
+.env.local
+.env.*.local
+
+metrics/
+*.jsonl
+*.imx
+
+.git/
+.gitignore

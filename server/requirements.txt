@@ -1,0 +1,27 @@
+# Fase 1 - IARA / Ayo
+# Verificado em 2026-09-03 contra PyPI e docs.livekit.io.
+# livekit-agents 1.7.x usa AgentServer + @server.rtc_session + room_io.RoomOptions.
+# NAO fazer downgrade para 1.0/1.5 sem reescrever agent.py.
+
+# O extra [images] traz Pillow, que o plugin do bitHuman importa mas nao
+# declara como dependencia propria - sem ele o import do plugin quebra.
+livekit-agents[deepgram,elevenlabs,silero,turn-detector,images]~=1.7.1
+
+# --- motores de avatar ---
+# liveavatar = HeyGen LiveAvatar (ex-"Interactive Avatar").
+livekit-plugins-liveavatar~=1.7.1
+# bitHuman. ATENCAO: o pacote nativo so tem wheel para Linux x86_64,
+# Linux aarch64 e macOS 14+ ARM. Em Windows a instalacao falha - use WSL2 ou
+# o container do Dockerfile (que e Linux). Comente a linha se for so HeyGen.
+livekit-plugins-bithuman~=1.7.1
+
+# --- cerebro: webhook do n8n ---
+# ja vem com livekit-agents; declarado porque agent/n8n.py importa direto.
+aiohttp~=3.10
+
+# --- token server ---
+fastapi~=0.115
+uvicorn[standard]~=0.32
+pydantic~=2.9
+livekit-api~=1.2.1
+python-dotenv~=1.0

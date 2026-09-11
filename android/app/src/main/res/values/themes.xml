@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Iara" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#171029</item>
+        <item name="android:navigationBarColor">#171029</item>
+        <item name="android:windowBackground">#171029</item>
+    </style>
+</resources>
