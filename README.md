@@ -138,7 +138,27 @@ Se a resposta não tiver texto aproveitável, a IARA fala `BRAIN_FAILURE_TEXT` e
 vez de ler JSON em voz alta. [`tests/test_n8n_parse.py`](server/tests/test_n8n_parse.py)
 cobre todos esses formatos e roda sem instalar nada.
 
-### O silêncio enquanto o fluxo pensa
+#### A armadilha que custou um dia: o SDK exige um `llm=` mesmo com `llm_node` sobrescrito
+
+Em `_user_turn_completed_task` o livekit-agents 1.7 faz, **antes** de chamar
+o `llm_node`:
+
+```python
+elif self.llm is None:
+    return  # skip response if no llm is set
+```
+
+Sem um `llm=` na `AgentSession`, o turno do usuário é descartado em silêncio:
+transcreve, fecha o turno, e não responde nada. Nenhum erro, nenhum aviso. A
+saudação continua funcionando, porque `say()` não passa por aí — o que torna
+o sintoma enganoso.
+
+A solução é [`N8nSentinelLLM`](server/agent/pipeline.py): um LLM de mentira
+que satisfaz a verificação e levanta erro se algum dia for chamado. O
+`dry_run.py` não pegou isso porque chamava o `llm_node` direto, sem o
+pipeline do SDK. Foi o teste com áudio real na sala que revelou.
+
+## O silêncio enquanto o fluxo pensa
 
 Este é o ponto delicado, e é o que a conversa com o cliente já antecipou. O n8n
 devolve a resposta **inteira**, não token a token. O TTS não tem como começar a
@@ -209,6 +229,7 @@ server/
     main.py             FastAPI: POST /token, GET /health
   tests/
     test_n8n_parse.py   parser de resposta do n8n, sem dependências
+    check_eleven_agent.py  agente do ElevenLabs Agents usado pelo LiveAvatar
   requirements.txt  .env.example  Dockerfile  docker-compose.yml
 
 android/
@@ -258,6 +279,22 @@ cd server
 python tests/test_n8n_parse.py   # parser do n8n, sem instalar nada
 python tests/dry_run.py          # o agente contra o SDK real, sem credencial
 ```
+
+E um diagnóstico à parte, para o caminho sem código em que o LiveAvatar usa um
+agente do ElevenLabs Agents como cérebro e voz (modo LITE):
+
+```bash
+python tests/check_eleven_agent.py agent_xxx        # lê e confere
+python tests/check_eleven_agent.py agent_xxx --fix  # corrige os formatos de áudio
+```
+
+Confere os dois formatos de áudio que o LiveAvatar exige (`pcm_24000` na saída do
+TTS **e** na entrada do usuário), o plano da conta e, o mais útil, lista as
+conversas do agente com a origem de cada uma: uma sessão do LiveAvatar que
+conectou de verdade aparece ali. Se a sessão foi aberta e nenhuma conversa
+surgiu, o worker do LiveAvatar nem abriu o WebSocket — a falha é do lado do
+LiveAvatar, não do microfone, da chave nem do agente (foi o caso em 18/09/2026;
+o contorno é um voice agent nativo do LiveAvatar, modo FULL, com o mesmo prompt).
 
 O `dry_run.py` sobe um webhook falso em `localhost`, constrói a `AgentSession`
 de verdade e roda o `llm_node` — verifica que a frase de espera sai no tempo

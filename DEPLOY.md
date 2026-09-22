@@ -1,5 +1,27 @@
 # Subir o backend no VPS Linux
 
+## Como está no ar (22/09/2026)
+
+| peça | onde |
+|---|---|
+| VPS | `161.97.77.100` (Ubuntu 24.04, compartilhado com outros sites), app em `/var/www/pro-chatbot` |
+| token server | `https://chatbot.michaelhassan.dev` → nginx (TLS Let's Encrypt, renova sozinho) → `127.0.0.1:8099` (systemd `iara-token-server`) |
+| agente | systemd `iara-agent`, `agent_name=iara`, saúde em `127.0.0.1:8100` |
+| LiveKit | LiveKit Cloud `wss://chatbot-uvygbkun.livekit.cloud` (o `livekit-server` local do VPS não é mais usado) |
+| avatar | HeyGen LiveAvatar, avatar "IARA AYO CORP 2" |
+| cérebro | `https://webhookprod.iara.ia.br/webhook/iara-app-voz` |
+
+Redeploy = `bundle.sh` na sua máquina, enviar o tarball, extrair sobre
+`/var/www/pro-chatbot`, e rodar `deploy/steps/06_agent_prod.sh`. O `.env` fica
+só no VPS (`chmod 600`); o passo 06 valida as chaves e recusa `.env` com
+comentário na mesma linha do valor (o systemd não os ignora). O passo
+`07_nginx_tls.sh` só precisa rodar de novo se o domínio mudar.
+
+O APK de produção é buildado com
+`-Piara.tokenServerUrl=https://chatbot.michaelhassan.dev/ -Piara.tokenServerKey=<TOKEN_SERVER_SHARED_SECRET do .env do VPS>`.
+
+---
+
 O que vai para o VPS é **só a pasta `server/`**. O `android/` fica na sua
 máquina — dele sai um APK que só precisa saber a URL do token server. A pasta
 `assets/` também fica: as imagens já viraram recursos dentro do APK.
@@ -94,13 +116,29 @@ nano .env
 O que já está confirmado e pode entrar como está:
 
 ```dotenv
-AVATAR_ENGINE=bithuman
+# HeyGen LiveAvatar (chave e avatar validados em 21/09/2026 com tests/check_liveavatar.py)
+AVATAR_ENGINE=heygen
+HEYGEN_API_KEY=                 # a mesma do server/.env desta maquina
+HEYGEN_AVATAR_ID=b0b577bd-bdaf-4490-ab6c-f24f10df1c44   # "IARA AYO CORP 2"
+HEYGEN_VIDEO_QUALITY=high
+
+# bitHuman, se precisar voltar: AVATAR_ENGINE=bithuman
 BITHUMAN_API_KEY=DzBUCEPWyqQUeWeHxy31xof2gMKipRoiSYvYP5CLQsEJuaOXFop3PwjXSXLGhCNfa
 BITHUMAN_AVATAR_ID=A05AFZ5346
 BITHUMAN_MODEL=expression
 
 ELEVENLABS_API_KEY=sk_...
 ELEVENLABS_VOICE_ID=bgFrKEhyj6QhB4Os9iaa
+```
+
+**Com `AVATAR_ENGINE=heygen` o `LIVEKIT_URL` precisa ser `wss://` público.**
+O worker do LiveAvatar roda na nuvem deles e entra na sala como participante;
+um LiveKit em `localhost`/`10.0.2.2` cria a sessão, responde 200 no `/start`
+e nunca publica vídeo. Depois de preencher o `.env`, confira com:
+
+```bash
+.venv/bin/python tests/check_liveavatar.py            # chave, avatar, LIVEKIT_URL — sem gastar crédito
+.venv/bin/python tests/check_liveavatar.py --session  # abre uma sessão real de alguns segundos (cobra)
 ```
 
 O que ainda falta conseguir:

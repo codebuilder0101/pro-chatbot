@@ -23,6 +23,7 @@ from typing import Any
 import aiohttp
 
 from .config import settings
+from .fala import para_fala
 
 logger = logging.getLogger("iara.n8n")
 
@@ -133,6 +134,7 @@ class N8nBrain:
             try:
                 body, content_type = await self._post(payload)
                 reply_text, end_session, raw = _parse_reply(body, content_type)
+                reply_text = para_fala(reply_text)
                 latency_ms = round((time.monotonic() - started) * 1000.0, 1)
 
                 self._history.append(_Turn("user", text))
@@ -156,7 +158,7 @@ class N8nBrain:
             except _Retryable as exc:
                 last_error = exc
                 if attempt == 0:
-                    logger.warning("n8n falhou (%s), repetindo uma vez", exc)
+                    logger.warning("n8n: %s; repetindo uma vez", exc)
                     continue
             except BrainError:
                 raise
@@ -209,6 +211,42 @@ class _Retryable(Exception):
     """Falha transitoria: vale uma segunda tentativa."""
 
 
+class _RespostaVazia(_Retryable, BrainError):
+    """O n8n respondeu 200 mas sem texto nenhum.
+
+    Medido em producao: com o gpt-5.2 e o prompt do roteador, cerca de 1 em 3
+    respostas volta vazia - o modelo tenta "chamar" uma ferramenta que nao
+    esta ligada e nao produz texto. Como a resposta vazia chega rapido
+    (~1,5 s), repetir uma vez custa pouco e quase sempre resolve.
+
+    Herda de _Retryable para cair no laco de repeticao de ask(), e de
+    BrainError para continuar sendo, para quem esta fora, um erro do cerebro.
+    """
+
+
+#: Respostas que o n8n devolve quando o no' Webhook esta em "Respond:
+#: Immediately". Ele confirma que o fluxo comecou e joga fora o que o fluxo
+#: produzir - a resposta da IARA nunca volta.
+_ACK_DO_N8N = {
+    "workflow was started",
+    "workflow got started",
+}
+
+
+def _e_confirmacao_de_inicio(body: Any) -> bool:
+    """Detecta a confirmacao vazia do n8n em vez de trata-la como resposta.
+
+    Sem esta checagem o estrago e' silencioso e grotesco: "message" esta entre
+    as chaves que aceitamos, entao a IARA leria "Workflow was started" em voz
+    alta para o usuario, com a boca sincronizada, como se fosse uma resposta
+    clinica.
+    """
+    if not isinstance(body, dict) or len(body) != 1:
+        return False
+    texto = body.get("message")
+    return isinstance(texto, str) and texto.strip().lower() in _ACK_DO_N8N
+
+
 def _parse_reply(body: Any, content_type: str) -> tuple[str, bool, Any]:
     """Extrai o texto da resposta, aceitando os formatos que o n8n costuma dar.
 
@@ -222,19 +260,26 @@ def _parse_reply(body: Any, content_type: str) -> tuple[str, bool, Any]:
     if isinstance(body, str) and "json" not in content_type:
         text = body.strip()
         if not text:
-            raise BrainError("n8n respondeu vazio")
+            raise _RespostaVazia("n8n respondeu vazio")
         return text, False, raw
+
+    if _e_confirmacao_de_inicio(body):
+        raise BrainError(
+            "o n8n confirmou o inicio do fluxo mas nao devolveu resposta. "
+            "No no' Webhook, troque 'Respond: Immediately' por "
+            "'Using Respond to Webhook Node' (ou 'When Last Node Finishes')."
+        )
 
     # o no' "Respond to Webhook" costuma devolver uma lista de itens
     if isinstance(body, list):
         if not body:
-            raise BrainError("n8n respondeu uma lista vazia")
+            raise _RespostaVazia("n8n respondeu uma lista vazia")
         body = body[0]
 
     if isinstance(body, str):
         text = body.strip()
         if not text:
-            raise BrainError("n8n respondeu vazio")
+            raise _RespostaVazia("n8n respondeu vazio")
         return text, False, raw
 
     if not isinstance(body, dict):
@@ -258,6 +303,6 @@ def _parse_reply(body: Any, content_type: str) -> tuple[str, bool, Any]:
                 if isinstance(nested, str) and nested.strip():
                     return nested.strip(), end_session, raw
 
-    raise BrainError(
+    raise _RespostaVazia(
         "n8n respondeu sem texto. Chaves aceitas: " + ", ".join(_REPLY_KEYS)
     )

@@ -109,6 +109,37 @@ async def health() -> dict:
     }
 
 
+async def dispatch_agent(room: str) -> None:
+    """Pede ao LiveKit que coloque o agente da IARA nesta sala.
+
+    O agente registra com `agent_name`, entao o LiveKit NAO o coloca sozinho
+    em sala nenhuma - e' de proposito, para ele nao entrar em sala que nao e'
+    dele. Quem decide e' este servico, no momento em que emite o token.
+
+    Se falhar, a chamada e' recusada aqui mesmo. A alternativa seria devolver
+    o token e o usuario cair numa sala vazia, olhando para o circulo girando
+    sem entender por que ninguem aparece.
+    """
+    lkapi = api.LiveKitAPI(
+        url=settings.livekit_url.replace("ws://", "http://").replace("wss://", "https://"),
+        api_key=settings.livekit_api_key,
+        api_secret=settings.livekit_api_secret,
+    )
+    try:
+        await lkapi.agent_dispatch.create_dispatch(
+            api.CreateAgentDispatchRequest(room=room, agent_name=settings.agent_name)
+        )
+        logger.info("agente %s despachado para %s", settings.agent_name, room)
+    except Exception as exc:
+        logger.exception("falha ao despachar o agente para %s", room)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="A IARA esta indisponivel no momento.",
+        ) from exc
+    finally:
+        await lkapi.aclose()
+
+
 @app.post(
     "/token",
     response_model=TokenResponse,
@@ -144,6 +175,10 @@ async def create_token(req: TokenRequest) -> TokenResponse:
         .with_grants(grants)
         .to_jwt()
     )
+
+    # O agente entra antes de o app conectar. Assim o avatar ja esta na sala
+    # quando o usuario chega, em vez de o usuario esperar olhando o circulo.
+    await dispatch_agent(room)
 
     logger.info("token emitido room=%s identity=%s ttl=%smin", room, identity, ttl_minutes)
 

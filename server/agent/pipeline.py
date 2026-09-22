@@ -34,6 +34,15 @@ from livekit.plugins import deepgram, elevenlabs, silero
 from .config import settings
 from .n8n import BrainError, BrainReply, N8nBrain
 
+# Importar aqui registra o plugin do detector de turno no SDK, e e isso que
+# faz o `python -m agent.agent download-files` baixar o modelo na instalacao.
+# Sem este import o modelo so seria procurado no primeiro turno de conversa -
+# e falharia, porque a construcao dele exige contexto de job.
+#
+# Condicional para o modo "vad" nao pagar por um modelo que nao usa.
+if settings.turn_detector.lower() == "multilingual":  # noqa: SIM108
+    from livekit.plugins import turn_detector  # noqa: F401
+
 logger = logging.getLogger("iara.pipeline")
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "system_pt_br.md"
@@ -158,6 +167,40 @@ class IaraAgent(Agent):
             self._on_end_session()
 
 
+class N8nSentinelLLM(llm.LLM):
+    """LLM de mentira que existe por um unico motivo, e ele e' importante.
+
+    A resposta da IARA nasce no `llm_node` sobrescrito em IaraAgent, que
+    chama o n8n. So' que o SDK, antes de chamar o llm_node, faz:
+
+        elif self.llm is None:
+            return  # skip response if no llm is set
+
+    Ou seja: sem um `llm=` na AgentSession, o SDK descarta o turno do usuario
+    em silencio - transcreve, fecha o turno, e nao responde nada. Nenhum erro,
+    nenhum aviso. Foi assim que o M2 falhou na primeira vez: saudacao ok,
+    transcricao ok, e depois nada.
+
+    Esta classe satisfaz a verificacao. Se o `chat()` dela for chamado algum
+    dia, e' porque o llm_node deixou de ser sobrescrito, e ai e' melhor
+    quebrar alto do que responder errado.
+    """
+
+    @property
+    def model(self) -> str:
+        return "n8n-webhook"
+
+    @property
+    def provider(self) -> str:
+        return "n8n"
+
+    def chat(self, **_kwargs: Any) -> llm.LLMStream:
+        raise RuntimeError(
+            "N8nSentinelLLM.chat() foi chamado. O llm_node de IaraAgent deveria "
+            "ter interceptado a geracao; confira se IaraAgent esta sendo usado."
+        )
+
+
 def _last_user_text(chat_ctx: llm.ChatContext) -> str:
     for item in reversed(chat_ctx.items):
         if getattr(item, "type", None) != "message":
@@ -193,10 +236,21 @@ def _build_turn_detection() -> Any:
 
 
 def build_stt() -> deepgram.STT:
-    return deepgram.STT(
-        model=settings.deepgram_model,
-        language=settings.stt_language,
-    )
+    kwargs: dict[str, Any] = {
+        "model": settings.deepgram_model,
+        "language": settings.stt_language,
+        # O padrao do plugin e False. Ligado, a transcricao chega ao n8n
+        # pontuada e com numeros e datas normalizados, em vez de um bloco
+        # de palavras soltas.
+        "smart_format": True,
+    }
+
+    # keyterm so existe no nova-3; em nova-2 o parametro equivalente e outro
+    # e mandar este quebraria a conexao.
+    if settings.stt_keyterms and settings.deepgram_model.startswith("nova-3"):
+        kwargs["keyterm"] = list(settings.stt_keyterms)
+
+    return deepgram.STT(**kwargs)
 
 
 def build_tts() -> elevenlabs.TTS:
@@ -209,7 +263,7 @@ def build_tts() -> elevenlabs.TTS:
 
 
 def build_session() -> AgentSession:
-    """AgentSession sem LLM, com barge-in tratado como requisito.
+    """AgentSession com LLM sentinela, e barge-in tratado como requisito.
 
     Sobre os numeros de interrupcao: mode="vad" corta pelo sinal de voz, sem
     esperar a transcricao. E o caminho mais curto para ficar abaixo dos 300 ms
@@ -219,6 +273,8 @@ def build_session() -> AgentSession:
     """
     session = AgentSession(
         stt=build_stt(),
+        # Nao e' o cerebro: ver N8nSentinelLLM. Sem isto o SDK pula a resposta.
+        llm=N8nSentinelLLM(),
         tts=build_tts(),
         vad=silero.VAD.load(),
         turn_handling=TurnHandlingOptions(

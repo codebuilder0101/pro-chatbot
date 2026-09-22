@@ -70,6 +70,10 @@ CASES = [
 # Formatos que precisam ser rejeitados: melhor a IARA dizer que teve um
 # problema do que ler em voz alta um pedaco de JSON.
 FAILURES = [
+    # A confirmacao de "Respond: Immediately" do n8n. Sem rejeitar isto, a
+    # IARA leria "Workflow was started" em voz alta como se fosse resposta.
+    ("confirmacao de inicio do n8n", {"message": "Workflow was started"}, JSON),
+    ("confirmacao, outra redacao", {"message": "Workflow got started"}, JSON),
     ("dict sem chave util", {"foo": "bar"}, JSON),
     ("lista vazia", [], JSON),
     ("string vazia", "", JSON),

@@ -6,7 +6,7 @@ livekit-agents aparece aqui, e nao na frente do cliente.
 
 O que ele faz:
   1. importa todos os modulos do projeto
-  2. constroi STT, TTS, VAD, detector de turno e a AgentSession sem LLM
+  2. constroi STT, TTS, VAD, detector de turno e a AgentSession
   3. sobe um webhook falso em localhost e roda o llm_node de verdade,
      medindo se a frase de espera sai na hora certa
   4. verifica que barge-in cancela a requisicao ao n8n
@@ -135,7 +135,13 @@ def _assert(cond: bool, msg: str) -> bool:
 
 
 if session is not None:
-    check("session.llm e' None", lambda: _assert(session.llm is None, "llm deveria ser None"))
+    check(
+        "session.llm e' a sentinela (sem ela o SDK pula a resposta)",
+        lambda: _assert(
+            type(session.llm).__name__ == "N8nSentinelLLM",
+            "llm deveria ser N8nSentinelLLM, veio %r" % type(session.llm).__name__,
+        ),
+    )
 
 
 # --------------------------------------------------- webhook falso do n8n

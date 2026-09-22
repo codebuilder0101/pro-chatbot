@@ -100,6 +100,15 @@ class Settings:
     )
     tts_language: str = field(default_factory=lambda: _s("TTS_LANGUAGE", "pt"))
 
+    # Termos que o Deepgram deve reconhecer com grafia certa. Sem isto ele
+    # transcreve "IARA" como "Yara" - foneticamente certo, grafia errada, e
+    # o fluxo do n8n recebe um nome que nao e o da assistente. Medido.
+    #
+    # So funciona com nova-3 (keyterm). Em nova-2 o parametro e outro.
+    stt_keyterms: list[str] = field(
+        default_factory=lambda: _list("STT_KEYTERMS", ["IARA", "Ayo"])
+    )
+
     # inference | multilingual | vad
     turn_detector: str = field(default_factory=lambda: _s("TURN_DETECTOR", "inference"))
 
