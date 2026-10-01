@@ -51,10 +51,18 @@ def _log(msg: str) -> None:
     print(f"  {time.strftime('%H:%M:%S')}  {msg}", flush=True)
 
 
-async def pedir_token(session: aiohttp.ClientSession, base: str, secret: str) -> dict:
+async def pedir_token(
+    session: aiohttp.ClientSession, base: str, secret: str, codigo: str
+) -> dict:
     async with session.post(
         f"{base}/token",
-        json={"user_id": "teste-e2e", "display_name": "Teste E2E"},
+        json={
+            "user_id": "teste-e2e",
+            "display_name": "Teste E2E",
+            # O codigo nao vem do APK: e digitado pela pessoa. Aqui vem do
+            # ambiente, como viria do aparelho dela.
+            "access_code": codigo,
+        },
         headers={"x-api-key": secret},
         timeout=aiohttp.ClientTimeout(total=30),
     ) as r:
@@ -204,8 +212,13 @@ async def main() -> int:
     dominio = os.environ.get("TOKEN_SERVER_DOMAIN", "").strip()
     base = os.environ.get("E2E_BASE") or (f"https://{dominio}" if dominio else "")
     secret = settings.token_server_shared_secret
+    codigo = os.environ.get("E2E_ACCESS_CODE", "").strip()
     if not base.startswith("https://") or not secret:
         print("defina TOKEN_SERVER_DOMAIN e TOKEN_SERVER_SHARED_SECRET no .env")
+        return 1
+    if not codigo:
+        print("defina E2E_ACCESS_CODE com um codigo de acesso valido")
+        print("crie um com: python deploy/codes.py criar \"Teste\" --teto 60")
         return 1
 
     print(f"=== celular virtual -> {base} ===")
@@ -214,7 +227,7 @@ async def main() -> int:
     mon = Monitor()
     ok = True
     try:
-        creds = await pedir_token(http, base, secret)
+        creds = await pedir_token(http, base, secret, codigo)
         _log(f"token ok: sala={creds['room']} ttl={creds['expires_in_s']}s")
 
         mon.anexar(room)

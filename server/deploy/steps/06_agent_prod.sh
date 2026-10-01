@@ -36,6 +36,14 @@ done
 if grep -qE '^TOKEN_SERVER_SHARED_SECRET=troque-isto' .env; then
     echo "TOKEN_SERVER_SHARED_SECRET ainda e' o placeholder"; exit 1
 fi
+# O codigo de acesso e' o unico controle que o APK nao carrega dentro de si.
+# Subir producao sem ele devolve o buraco que ele veio fechar.
+if ! grep -qE '^ACCESS_CODES_REQUIRED=(1|true|yes|on)$' .env; then
+    echo "ACCESS_CODES_REQUIRED precisa ser true em producao"; exit 1
+fi
+if ! grep -qE '^ADMIN_TOKEN=.+$' .env; then
+    echo "ADMIN_TOKEN ausente: sem ele nao da para administrar os codigos"; exit 1
+fi
 # systemd EnvironmentFile nao tira comentario depois do valor: "X=1  # nota"
 # vira o valor "1  # nota". Barra antes que vire bug silencioso.
 if grep -vE '^\s*(#|$)' .env | grep -qE '=.*\s#'; then

@@ -11,6 +11,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
@@ -30,7 +31,10 @@ data class TokenResponse(
 
 interface TokenApi {
     @POST("token")
-    suspend fun createToken(@Body request: TokenRequest): TokenResponse
+    suspend fun createToken(
+        @Header("Authorization") bearer: String,
+        @Body request: TokenRequest,
+    ): TokenResponse
 }
 
 object TokenApiFactory {
@@ -40,7 +44,17 @@ object TokenApiFactory {
         explicitNulls = false
     }
 
-    fun create(): TokenApi {
+    /**
+     * Um Retrofit so para os dois servicos. Criar dois clientes duplicaria o
+     * pool de conexoes e o interceptor da chave sem ganho nenhum.
+     */
+    private val retrofit: Retrofit by lazy { build() }
+
+    fun create(): TokenApi = retrofit.create(TokenApi::class.java)
+
+    fun createAuth(): AuthApi = retrofit.create(AuthApi::class.java)
+
+    private fun build(): Retrofit {
         val auth = Interceptor { chain ->
             // Este e o unico segredo que o APK carrega, e ele nao abre nada
             // alem de um pedido de token de sala. As chaves de ElevenLabs,
@@ -70,6 +84,5 @@ object TokenApiFactory {
             .client(clientBuilder.build())
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
-            .create(TokenApi::class.java)
     }
 }

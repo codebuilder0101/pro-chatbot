@@ -63,6 +63,10 @@ class SessionLimits:
     def touch(self) -> None:
         self._last_activity = time.monotonic()
 
+    def minutos_decorridos(self) -> float:
+        """Quanto a sessao durou, em minutos. Serve para acertar a reserva."""
+        return (time.monotonic() - self._started) / 60.0
+
     def start(self) -> None:
         self._task = asyncio.create_task(self._watch())
 
@@ -98,6 +102,43 @@ class SessionLimits:
         if self._task is not None:
             self._task.cancel()
             self._task = None
+
+
+async def relatar_fim_de_sessao(room_name: str, minutos: float) -> None:
+    """Avisa o token server quanto a conversa durou, para acertar os minutos.
+
+    O token server reserva o pior caso (SESSION_MAX_MINUTES) ao emitir o
+    token, porque ele nao tem como saber quando a conversa acaba. Este aviso
+    devolve a diferenca.
+
+    Falhar aqui nao pode derrubar o encerramento: no pior caso a reserva
+    continua debitada, que e' o lado seguro de errar.
+    """
+    base = settings.token_server_internal_url.strip().rstrip("/")
+    if not base or not settings.token_server_shared_secret:
+        return
+
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                f"{base}/session-ended",
+                json={"room": room_name, "minutos": round(minutos, 2)},
+                headers={"x-api-key": settings.token_server_shared_secret},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as r:
+                if r.status != 200:
+                    logger.warning(
+                        "token server recusou o fim da sessao: %s %s",
+                        r.status, (await r.text())[:200],
+                    )
+                else:
+                    logger.info(
+                        "fim de sessao informado room=%s minutos=%.1f", room_name, minutos
+                    )
+    except Exception:  # pragma: no cover - rede
+        logger.exception("falha ao informar o fim da sessao %s", room_name)
 
 
 def _first_participant_identity(room: object) -> str:
@@ -170,6 +211,7 @@ async def iara_session(ctx: JobContext) -> None:
             await probe.aclose()
         await brain.aclose()
         await engine.aclose()
+        await relatar_fim_de_sessao(room_name, limits.minutos_decorridos())
 
     ctx.add_shutdown_callback(teardown)
 

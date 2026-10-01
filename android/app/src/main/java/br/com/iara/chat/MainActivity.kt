@@ -25,7 +25,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.iara.chat.call.CallForegroundService
 import br.com.iara.chat.call.CallPhase
 import br.com.iara.chat.call.RoomManager
+import br.com.iara.chat.call.AuthManager
+import br.com.iara.chat.call.AuthScreen
 import br.com.iara.chat.ui.CallScreen
+import br.com.iara.chat.ui.LoginScreen
+import br.com.iara.chat.ui.RegisterScreen
 import br.com.iara.chat.ui.EndScreen
 import br.com.iara.chat.ui.HomeScreen
 import br.com.iara.chat.ui.theme.IaraTheme
@@ -52,12 +56,17 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun IaraRoot(manager: RoomManager = viewModel()) {
+private fun IaraRoot(
+    manager: RoomManager = viewModel(),
+    auth: AuthManager = viewModel(),
+) {
     val context = LocalContext.current
     val state by manager.state.collectAsStateWithLifecycle()
+    val authState by auth.state.collectAsStateWithLifecycle()
 
     var permissionDenied by remember { mutableStateOf(false) }
     var pendingStart by remember { mutableStateOf(false) }
+
 
     val micLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -88,8 +97,42 @@ private fun IaraRoot(manager: RoomManager = viewModel()) {
         }
     }
 
+    // Quando o /token responde 401 a sessao morreu no servidor. O RoomManager
+    // avisa por aqui e a pessoa volta para a tela de entrada.
+    //
+    // Precisa ser efeito, e nao chamada no corpo do composable: mexer em
+    // estado durante a composicao realimenta a propria composicao.
+    LaunchedEffect(Unit) {
+        manager.onSessionExpired = { auth.sessaoExpirou() }
+    }
+
+    if (!authState.loggedIn) {
+        when (authState.screen) {
+            AuthScreen.Entrar -> LoginScreen(
+                emailInicial = authState.emailLembrado,
+                carregando = authState.loading,
+                errorMessage = authState.errorMessage,
+                onEntrar = auth::entrar,
+                onIrParaCadastro = { auth.mostrar(AuthScreen.Cadastrar) },
+            )
+
+            AuthScreen.Cadastrar -> RegisterScreen(
+                carregando = authState.loading,
+                errorMessage = authState.errorMessage,
+                onCadastrar = auth::cadastrar,
+                onIrParaEntrar = { auth.mostrar(AuthScreen.Entrar) },
+            )
+        }
+        return
+    }
+
     when (state.phase) {
         CallPhase.Idle -> HomeScreen(
+            nome = authState.nome,
+            onSair = {
+                manager.reset()
+                auth.sair()
+            },
             permissionDenied = permissionDenied,
             onOpenSettings = {
                 context.startActivity(

@@ -38,6 +38,16 @@ fi
 echo "certbot: $(certbot --version 2>&1)"
 
 echo
+echo "=== zona de rate limit (contexto http) ==="
+Z=/etc/nginx/conf.d/iara_ratelimit.conf
+if [ ! -f "$Z" ]; then
+    echo 'limit_req_zone $binary_remote_addr zone=iara_auth:10m rate=10r/m;' > "$Z"
+    echo "criada"
+else
+    echo "ja existe"
+fi
+
+echo
 echo "=== vhost nginx ==="
 # So' /health e /token existem. Qualquer outra rota e' 404 antes de chegar ao
 # Python - mesma politica do Caddyfile.
@@ -60,6 +70,18 @@ server {
         proxy_read_timeout 30s;
     }
 
+    # Cadastro e entrada. Limite por IP porque este e o endereco que quem
+    # tenta adivinhar senha vai martelar.
+    location /auth/ {
+        limit_req zone=iara_auth burst=10 nodelay;
+        proxy_pass http://127.0.0.1:8099;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_read_timeout 30s;
+    }
+
+    # /admin/ NAO entra aqui de proposito: administracao de codigos responde
+    # so em 127.0.0.1. Use deploy/codes.py.
     location / {
         return 404;
     }

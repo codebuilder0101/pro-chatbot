@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import br.com.iara.chat.data.AuthStore
 import br.com.iara.chat.data.TokenApiFactory
 import br.com.iara.chat.data.TokenRequest
 import br.com.iara.chat.data.TokenResponse
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import java.util.UUID
 
 /**
@@ -38,6 +40,15 @@ class RoomManager(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val TAG = "RoomManager"
+
+        /**
+         * A conta vale, mas a empresa nao pode abrir conversa agora: codigo
+         * revogado, vencido, ou teto de minutos atingido. Nao distinguimos os
+         * tres aqui porque a pessoa resolve do mesmo jeito, falando com quem
+         * contratou. O motivo real fica no log do servidor.
+         */
+        const val SEM_SALDO =
+            "A sua empresa esta sem acesso no momento. Fale com quem contratou a IARA."
         const val AGENT_STATE_ATTRIBUTE = "lk.agent.state"
         const val APP_READY_ATTRIBUTE = "app.avatar_ready"
 
@@ -49,6 +60,12 @@ class RoomManager(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<CallUiState> = _state.asStateFlow()
 
     private val tokenApi = TokenApiFactory.create()
+
+    /** Sessao de quem entrou. O /token so responde com ela. */
+    private val auth = AuthStore(application)
+
+    /** Avisado quando o servidor recusa a sessao, para voltar a tela de entrada. */
+    var onSessionExpired: (() -> Unit)? = null
 
     private var room: Room? = null
     private var eventJob: Job? = null
@@ -75,10 +92,30 @@ class RoomManager(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             val creds = try {
-                tokenApi.createToken(TokenRequest(userId = UUID.randomUUID().toString()))
+                tokenApi.createToken(
+                    bearer = "Bearer " + auth.sessionToken.orEmpty(),
+                    request = TokenRequest(userId = UUID.randomUUID().toString()),
+                )
             } catch (t: Throwable) {
                 Log.e(TAG, "falha ao obter token", t)
-                fail(t, "Nao consegui falar com o servidor.")
+                when {
+                    // 401: a sessao morreu no servidor. Devolve a pessoa para a
+                    // tela de entrada em vez de deixar ela tentando de novo com
+                    // um token que nao vale mais.
+                    t is HttpException && t.code() == 401 -> {
+                        _state.update {
+                            it.copy(phase = CallPhase.Idle, errorMessage = null)
+                        }
+                        onSessionExpired?.invoke()
+                    }
+                    // 403: a conta e valida, mas a empresa estourou o limite ou
+                    // teve o codigo revogado. Nao adianta entrar de novo.
+                    t is HttpException && t.code() == 403 ->
+                        _state.update {
+                            it.copy(phase = CallPhase.Failed, errorMessage = SEM_SALDO)
+                        }
+                    else -> fail(t, "Nao consegui falar com o servidor.")
+                }
                 return@launch
             }
 

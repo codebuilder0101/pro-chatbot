@@ -91,7 +91,7 @@ def check_key() -> bool:
     for av in results:
         print(
             f"          - {av['id']}  {av['name']!r}  {av['type']}  "
-            f"{av['status']}/{av['availability']}"
+            f"{av['status']}/{av.get('availability', 'n/d')}"
         )
     return True
 
@@ -114,8 +114,10 @@ def check_avatar() -> bool:
     problems = []
     if av.get("status") != "ACTIVE":
         problems.append(f"status={av.get('status')}")
-    if av.get("availability") != "usable":
-        problems.append(f"availability={av.get('availability')}")
+    # A API parou de mandar `availability` em 26/09/2026. Ausente nao e' erro:
+    # so' reclama quando o campo existe e diz que o avatar nao serve.
+    if "availability" in av and av["availability"] != "usable":
+        problems.append(f"availability={av['availability']}")
     if av.get("is_expired"):
         problems.append("expirado")
     if problems:

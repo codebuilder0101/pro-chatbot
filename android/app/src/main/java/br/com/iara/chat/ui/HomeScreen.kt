@@ -46,6 +46,8 @@ fun HomeScreen(
     onStart: () -> Unit,
     permissionDenied: Boolean,
     onOpenSettings: () -> Unit,
+    nome: String = "",
+    onSair: () -> Unit = {},
 ) {
     Box(
         modifier = Modifier
@@ -132,6 +134,19 @@ fun HomeScreen(
                         color = LilacBright,
                     )
                 }
+            }
+
+            if (nome.isNotBlank()) {
+                Text(
+                    text = "Conectada como $nome",
+                    color = MistDim,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            TextButton(onClick = onSair) {
+                Text(text = "Sair da conta", color = MistDim)
             }
         }
     }

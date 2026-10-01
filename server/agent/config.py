@@ -186,6 +186,31 @@ class Settings:
     )
     token_ttl_minutes: int = field(default_factory=lambda: _i("TOKEN_TTL_MINUTES", 25))
 
+    # --- codigos de acesso ----------------------------------------------
+    # O segredo que o APK carrega e' extraivel; o codigo de acesso nao mora
+    # no app, e' digitado pela pessoa e pode ser revogado sem republicar.
+    access_codes_path: str = field(
+        default_factory=lambda: _s("ACCESS_CODES_PATH", "access_codes.json")
+    )
+    # Desligar so' em desenvolvimento. O passo 06 do deploy recusa producao
+    # com isto desligado.
+    access_codes_required: bool = field(
+        default_factory=lambda: _b("ACCESS_CODES_REQUIRED", True)
+    )
+    admin_token: str = field(default_factory=lambda: _s("ADMIN_TOKEN"))
+
+    # --- contas de usuario ----------------------------------------------
+    # Postgres que guarda as contas. Vazio desliga o cadastro: o servico sobe
+    # e segue funcionando so' com codigo de acesso.
+    database_url: str = field(default_factory=lambda: _s("DATABASE_URL"))
+    # Quanto tempo a pessoa fica logada sem digitar a senha de novo.
+    session_days: int = field(default_factory=lambda: _i("SESSION_DAYS", 30))
+    # Onde o agente avisa o fim da sessao, para acertar os minutos reservados.
+    # Vazio desliga o aviso, e a reserva do pior caso fica debitada.
+    token_server_internal_url: str = field(
+        default_factory=lambda: _s("TOKEN_SERVER_INTERNAL_URL", "http://127.0.0.1:8099")
+    )
+
     # Instrumentacao
     measure_avatar_video: bool = field(
         default_factory=lambda: _b("MEASURE_AVATAR_VIDEO", False)

@@ -266,3 +266,47 @@ E para conferir a conta do bitHuman a qualquer momento, sem gastar crédito:
 ```bash
 curl -s https://api.bithuman.ai/v1/agents -H "api-secret: SUA_CHAVE"
 ```
+
+---
+
+## Códigos de acesso (desde 30/09/2026)
+
+O segredo que o APK carrega no header `x-api-key` é extraível: basta
+descompilar o arquivo. Enquanto ele foi o único controle, qualquer pessoa com
+o APK abria conversa e queimava minutos pagos de avatar. O **código de acesso**
+fecha isso sem exigir cadastro: ele não existe dentro do binário, é digitado
+pela pessoa, fica guardado só no aparelho dela e pode ser revogado no servidor
+sem republicar o app.
+
+### Como os minutos são controlados
+
+O token server não sabe quando a conversa termina, então contar depois seria
+furado. O controle é por **reserva**:
+
+1. ao emitir o token, debita o pior caso (`SESSION_MAX_MINUTES`) do saldo do código;
+2. quando o agente encerra, ele chama `/session-ended` e a diferença volta.
+
+Se o agente morrer e nunca avisar, o pior caso continua debitado. Erra para o
+lado seguro, que é o único aceitável quando o erro custa dinheiro.
+
+### Administrar os códigos
+
+Os endpoints `/admin/codes` respondem **apenas em 127.0.0.1** e não são
+publicados pelo nginx. Use a ferramenta, da sua máquina:
+
+```bash
+python deploy/codes.py listar
+python deploy/codes.py criar "Clinica Exemplo" --teto 600 --validade 2026-12-31
+python deploy/codes.py desativar ABCD2345
+python deploy/codes.py ativar ABCD2345
+python deploy/codes.py remover ABCD2345
+```
+
+`access_codes.json` no VPS é a fonte da verdade, inclusive do consumo
+acumulado. **Faça backup dele.**
+
+### O que isso muda no app
+
+A primeira tela passou a pedir o código. Digita uma vez e fica guardado. Se o
+servidor recusar, o app apaga o código e volta para a digitação, em vez de
+insistir com um código morto.

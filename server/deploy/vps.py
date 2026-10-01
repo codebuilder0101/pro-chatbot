@@ -13,6 +13,8 @@ argumento. Paramiko resolve sem instalar nada no servidor.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -75,28 +77,36 @@ def run(client: paramiko.SSHClient, command: str, quiet: bool = False) -> int:
 
 
 def put(client: paramiko.SSHClient, local: str, remote: str) -> None:
-    """Envia um arquivo em blocos.
+    """Envia um arquivo pelo stdin de um `base64 -d`, conferindo o sha256.
 
-    Escrito a mao porque `sftp.put()` falha com ENOENT contra este servidor,
-    enquanto `sftp.open()` no mesmo caminho funciona. Nao vale investigar o
-    porque: o caminho manual e' curto e resolve.
+    Nao usa SFTP de proposito. O subsistema SFTP deste servidor recusa abrir
+    caminho em /tmp com ENOENT, e no Git Bash existe uma segunda armadilha: o
+    MSYS reescreve `/tmp/x` para `C:/Users/.../Temp/x` ANTES de o caminho
+    chegar aqui, entao o arquivo e' criado no lugar errado sem erro nenhum.
+    Mandar o conteudo por stdin do `exec` nao passa por nenhum dos dois.
+
+    Em Git Bash, exporte MSYS_NO_PATHCONV=1 ao passar caminhos remotos.
     """
-    size = Path(local).stat().st_size
-    sftp = client.open_sftp()
-    try:
-        with open(local, "rb") as src, sftp.open(remote, "wb") as dst:
-            dst.set_pipelined(True)
-            while True:
-                chunk = src.read(65536)
-                if not chunk:
-                    break
-                dst.write(chunk)
-        enviado = sftp.stat(remote).st_size
-        if enviado != size:
-            raise OSError(f"tamanho divergente: local {size}, remoto {enviado}")
-        print(f"enviado: {Path(local).name} -> {remote}  ({size / 1024:.0f} KB)")
-    finally:
-        sftp.close()
+    data = Path(local).read_bytes()
+    esperado = hashlib.sha256(data).hexdigest()
+
+    stdin, stdout, stderr = client.exec_command(
+        f"base64 -d > '{remote}' && sha256sum '{remote}'"
+    )
+    stdin.write(base64.b64encode(data).decode())
+    stdin.channel.shutdown_write()
+
+    saida = stdout.read().decode().strip()
+    erro = stderr.read().decode().strip()
+    codigo = stdout.channel.recv_exit_status()
+
+    if codigo != 0 or not saida.startswith(esperado):
+        raise OSError(
+            f"falha ao enviar {local} -> {remote}: codigo {codigo}; "
+            f"sha256 esperado {esperado}, recebido {saida.split(' ')[0] or '(nada)'}"
+            + (f"; {erro}" if erro else "")
+        )
+    print(f"enviado: {Path(local).name} -> {remote}  ({len(data) / 1024:.0f} KB, sha256 ok)")
 
 
 def main() -> int:
