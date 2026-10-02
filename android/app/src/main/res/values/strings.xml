@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">IARA</string>
 
     <string name="home_tagline">Sua assistente por voz</string>
     <string name="home_start">Conversar com a IARA</string>

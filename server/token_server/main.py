@@ -67,6 +67,10 @@ class TokenRequest(BaseModel):
     # Digitado pela pessoa no app, nunca embutido no APK. Opcional no modelo
     # para que a ausencia vire 401 com mensagem clara, e nao 422 do pydantic.
     access_code: str = Field(default="", max_length=64)
+    # Qual motor de avatar o app quer: heygen (LiveAvatar) ou bithuman. Vazio
+    # usa o padrao do servidor. Existe para o cliente comparar os dois sem
+    # precisar de deploy entre um teste e outro.
+    avatar_engine: str = Field(default="", max_length=20)
 
 
 class TokenResponse(BaseModel):
@@ -220,17 +224,33 @@ async def health() -> dict:
     }
 
 
-async def dispatch_agent(room: str) -> None:
+#: Motores de avatar que o app pode pedir, e o worker que atende cada um.
+#: Cada worker roda com o seu proprio AVATAR_ENGINE; o token server so' escolhe
+#: para quem despachar. Pedir um motor que nao tem worker no ar deixaria o
+#: usuario numa sala vazia, entao o desconhecido cai no padrao.
+def _agente_do_motor(motor: str) -> str:
+    motor = (motor or "").strip().lower()
+    if motor == "bithuman" and settings.agent_name_bithuman:
+        return settings.agent_name_bithuman
+    return settings.agent_name
+
+
+async def dispatch_agent(room: str, motor: str = "") -> None:
     """Pede ao LiveKit que coloque o agente da IARA nesta sala.
 
     O agente registra com `agent_name`, entao o LiveKit NAO o coloca sozinho
     em sala nenhuma - e' de proposito, para ele nao entrar em sala que nao e'
     dele. Quem decide e' este servico, no momento em que emite o token.
 
+    `motor` permite ter dois workers no ar ao mesmo tempo, um por motor de
+    avatar, e deixar o app escolher. Serve para comparar LiveAvatar e bitHuman
+    lado a lado sem mexer na configuracao do servidor entre um teste e outro.
+
     Se falhar, a chamada e' recusada aqui mesmo. A alternativa seria devolver
     o token e o usuario cair numa sala vazia, olhando para o circulo girando
     sem entender por que ninguem aparece.
     """
+    agente = _agente_do_motor(motor)
     lkapi = api.LiveKitAPI(
         url=settings.livekit_url.replace("ws://", "http://").replace("wss://", "https://"),
         api_key=settings.livekit_api_key,
@@ -238,9 +258,9 @@ async def dispatch_agent(room: str) -> None:
     )
     try:
         await lkapi.agent_dispatch.create_dispatch(
-            api.CreateAgentDispatchRequest(room=room, agent_name=settings.agent_name)
+            api.CreateAgentDispatchRequest(room=room, agent_name=agente)
         )
-        logger.info("agente %s despachado para %s", settings.agent_name, room)
+        logger.info("agente %s despachado para %s motor=%s", agente, room, motor or "padrao")
     except Exception as exc:
         logger.exception("falha ao despachar o agente para %s", room)
         raise HTTPException(
@@ -311,7 +331,7 @@ async def create_token(
     # O agente entra antes de o app conectar. Assim o avatar ja esta na sala
     # quando o usuario chega, em vez de o usuario esperar olhando o circulo.
     try:
-        await dispatch_agent(room)
+        await dispatch_agent(room, req.avatar_engine)
     except Exception:
         # Despacho falhou: devolve a reserva, senao o minuto fica preso num
         # codigo por causa de um erro que nao foi do usuario.

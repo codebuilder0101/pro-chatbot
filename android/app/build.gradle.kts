@@ -12,8 +12,8 @@ android {
         applicationId = "br.com.iara.chat"
         minSdk = 26
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "1.3.0"
 
         // Nao ha chave de API aqui, e nao pode haver. Um APK e descompilavel.
         // O unico segredo embarcado e a chave do proprio token server, que so
@@ -28,6 +28,27 @@ android {
             "TOKEN_SERVER_KEY",
             "\"${project.findProperty("iara.tokenServerKey") ?: "troque-isto"}\"",
         )
+
+        // Motor de avatar que este APK pede ao servidor: heygen (LiveAvatar)
+        // ou bithuman. O motor roda no servidor, nao aqui; o app so diz qual
+        // quer, e o token server despacha para o worker correspondente.
+        //
+        // Existe para o cliente comparar os dois lado a lado. Os dois APKs
+        // recebem applicationId diferente de proposito, senao um substituiria
+        // o outro no aparelho e a comparacao exigiria desinstalar e reinstalar
+        // a cada troca.
+        val motorAvatar = (project.findProperty("iara.avatarEngine") as String?) ?: "heygen"
+        require(motorAvatar in listOf("heygen", "bithuman")) {
+            "iara.avatarEngine deve ser heygen ou bithuman, veio: $motorAvatar"
+        }
+        buildConfigField("String", "AVATAR_ENGINE", "\"$motorAvatar\"")
+
+        if (motorAvatar == "bithuman") {
+            applicationIdSuffix = ".bithuman"
+            resValue("string", "app_name", "IARA bitHuman")
+        } else {
+            resValue("string", "app_name", "IARA")
+        }
     }
 
     signingConfigs {
@@ -82,6 +103,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // Necessario para o resValue do nome do app por variante. No AGP 9
+        // isto vem desligado por padrao e o build falha com
+        // "defaultConfig contains custom resource values".
+        resValues = true
     }
 
     packaging {

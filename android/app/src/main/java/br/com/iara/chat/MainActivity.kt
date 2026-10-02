@@ -129,6 +129,9 @@ private fun IaraRoot(
     when (state.phase) {
         CallPhase.Idle -> HomeScreen(
             nome = authState.nome,
+            // Mostra qual motor este APK usa. Sem isto, com os dois
+            // instalados lado a lado, nao da para saber qual esta aberto.
+            motorAvatar = BuildConfig.AVATAR_ENGINE,
             onSair = {
                 manager.reset()
                 auth.sair()

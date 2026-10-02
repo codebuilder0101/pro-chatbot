@@ -88,6 +88,13 @@ class Settings:
     livekit_api_key: str = field(default_factory=lambda: _s("LIVEKIT_API_KEY"))
     livekit_api_secret: str = field(default_factory=lambda: _s("LIVEKIT_API_SECRET"))
     agent_name: str = field(default_factory=lambda: _s("AGENT_NAME", "iara"))
+    # Worker alternativo, rodando com AVATAR_ENGINE=bithuman. Serve para
+    # manter os dois motores no ar e deixar o app escolher, em vez de trocar a
+    # configuracao do servidor entre um teste e outro. Vazio desliga a opcao e
+    # qualquer pedido cai no worker padrao.
+    agent_name_bithuman: str = field(
+        default_factory=lambda: _s("AGENT_NAME_BITHUMAN", "iara-bithuman")
+    )
 
     # STT
     deepgram_model: str = field(default_factory=lambda: _s("DEEPGRAM_MODEL", "nova-3"))

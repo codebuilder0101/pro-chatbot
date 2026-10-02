@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import br.com.iara.chat.BuildConfig
 import br.com.iara.chat.data.AuthStore
 import br.com.iara.chat.data.TokenApiFactory
 import br.com.iara.chat.data.TokenRequest
@@ -94,7 +95,10 @@ class RoomManager(application: Application) : AndroidViewModel(application) {
             val creds = try {
                 tokenApi.createToken(
                     bearer = "Bearer " + auth.sessionToken.orEmpty(),
-                    request = TokenRequest(userId = UUID.randomUUID().toString()),
+                    request = TokenRequest(
+                        userId = UUID.randomUUID().toString(),
+                        avatarEngine = BuildConfig.AVATAR_ENGINE,
+                    ),
                 )
             } catch (t: Throwable) {
                 Log.e(TAG, "falha ao obter token", t)

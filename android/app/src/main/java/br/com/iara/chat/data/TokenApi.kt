@@ -19,6 +19,12 @@ import java.util.concurrent.TimeUnit
 data class TokenRequest(
     @SerialName("user_id") val userId: String,
     @SerialName("display_name") val displayName: String = "",
+    /**
+     * Motor de avatar que este APK pede. O motor roda no servidor; o app so
+     * diz qual quer, e o token server despacha para o worker certo. Existe
+     * para dar dois APKs que o cliente compara lado a lado.
+     */
+    @SerialName("avatar_engine") val avatarEngine: String = "",
 )
 
 @Serializable

@@ -47,6 +47,7 @@ fun HomeScreen(
     permissionDenied: Boolean,
     onOpenSettings: () -> Unit,
     nome: String = "",
+    motorAvatar: String = "",
     onSair: () -> Unit = {},
 ) {
     Box(
@@ -134,6 +135,19 @@ fun HomeScreen(
                         color = LilacBright,
                     )
                 }
+            }
+
+            if (motorAvatar.isNotBlank()) {
+                Text(
+                    text = if (motorAvatar == "bithuman") {
+                        "Versao de teste: avatar bitHuman"
+                    } else {
+                        "Versao de teste: avatar LiveAvatar"
+                    },
+                    color = Lilac,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
 
             if (nome.isNotBlank()) {
