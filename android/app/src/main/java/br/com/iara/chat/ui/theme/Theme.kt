@@ -9,6 +9,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 
 // Paleta tirada da referencia visual do cliente: fundo lilas, avatar em
 // recorte circular. O app fica escuro para o video nao competir com a UI.
@@ -58,6 +61,11 @@ fun IaraTheme(
     MaterialTheme(
         colorScheme = IaraColors,
         typography = IaraTypography,
-        content = content,
-    )
+    ) {
+        // Surface opaca na raiz. Sem ela, uma tela que nao pinta o proprio
+        // fundo deixa os pixels da tela anterior na superficie, e em alguns
+        // aparelhos as duas aparecem sobrepostas na troca. Aconteceu de
+        // verdade com as telas de entrada e cadastro.
+        Surface(modifier = Modifier.fillMaxSize(), color = Ink, content = content)
+    }
 }

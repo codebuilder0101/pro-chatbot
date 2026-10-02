@@ -12,8 +12,8 @@ android {
         applicationId = "br.com.iara.chat"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.2.1"
 
         // Nao ha chave de API aqui, e nao pode haver. Um APK e descompilavel.
         // O unico segredo embarcado e a chave do proprio token server, que so
