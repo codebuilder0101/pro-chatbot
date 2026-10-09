@@ -51,19 +51,49 @@ def _log(msg: str) -> None:
     print(f"  {time.strftime('%H:%M:%S')}  {msg}", flush=True)
 
 
+async def entrar_ou_cadastrar(
+    session: aiohttp.ClientSession, base: str, secret: str, email: str,
+    senha: str, codigo: str,
+) -> str:
+    """Devolve o token de sessao, cadastrando a conta se ainda nao existir.
+
+    O /token exige sessao desde que o cadastro entrou. Repetir o cadastro
+    devolve 409, que aqui nao e' erro: so' quer dizer que a conta ja existe.
+    """
+    cab = {"x-api-key": secret}
+    async with session.post(
+        f"{base}/auth/register",
+        json={"email": email, "senha": senha, "nome": "Teste E2E", "access_code": codigo},
+        headers=cab, timeout=aiohttp.ClientTimeout(total=30),
+    ) as r:
+        if r.status == 200:
+            _log("conta criada")
+            return (await r.json())["session_token"]
+        if r.status != 409:
+            raise RuntimeError(f"/auth/register {r.status}: {(await r.text())[:200]}")
+
+    async with session.post(
+        f"{base}/auth/login", json={"email": email, "senha": senha},
+        headers=cab, timeout=aiohttp.ClientTimeout(total=30),
+    ) as r:
+        if r.status != 200:
+            raise RuntimeError(f"/auth/login {r.status}: {(await r.text())[:200]}")
+        _log("entrou com a conta existente")
+        return (await r.json())["session_token"]
+
+
 async def pedir_token(
-    session: aiohttp.ClientSession, base: str, secret: str, codigo: str
+    session: aiohttp.ClientSession, base: str, secret: str, sessao: str, motor: str
 ) -> dict:
     async with session.post(
         f"{base}/token",
         json={
             "user_id": "teste-e2e",
             "display_name": "Teste E2E",
-            # O codigo nao vem do APK: e digitado pela pessoa. Aqui vem do
-            # ambiente, como viria do aparelho dela.
-            "access_code": codigo,
+            # Qual motor de avatar este "aparelho" pede. Vazio usa o padrao.
+            "avatar_engine": motor,
         },
-        headers={"x-api-key": secret},
+        headers={"x-api-key": secret, "Authorization": f"Bearer {sessao}"},
         timeout=aiohttp.ClientTimeout(total=30),
     ) as r:
         body = await r.text()
@@ -151,6 +181,15 @@ class Monitor:
     def agora(self) -> float:
         return time.monotonic() - self._t0
 
+    async def esperar_video(self, timeout: float = 45.0) -> bool:
+        """Espera o primeiro frame do avatar, como o app faz."""
+        limite = time.monotonic() + timeout
+        while time.monotonic() < limite:
+            if self.primeiro_frame_em is not None:
+                return True
+            await asyncio.sleep(0.2)
+        return False
+
     def falou_entre(self, inicio: float, fim: float) -> bool:
         return any(inicio <= t <= fim for t in self.audio_janelas)
 
@@ -213,6 +252,11 @@ async def main() -> int:
     base = os.environ.get("E2E_BASE") or (f"https://{dominio}" if dominio else "")
     secret = settings.token_server_shared_secret
     codigo = os.environ.get("E2E_ACCESS_CODE", "").strip()
+    # Conta usada pelo teste. Fica fixa para nao encher o banco a cada rodada.
+    email = os.environ.get("E2E_EMAIL", "teste-e2e@exemplo.com").strip()
+    senha = os.environ.get("E2E_SENHA", "teste-e2e-123456").strip()
+    # heygen, bithuman, ou vazio para o padrao do servidor.
+    motor = os.environ.get("E2E_AVATAR_ENGINE", "").strip()
     if not base.startswith("https://") or not secret:
         print("defina TOKEN_SERVER_DOMAIN e TOKEN_SERVER_SHARED_SECRET no .env")
         return 1
@@ -221,13 +265,14 @@ async def main() -> int:
         print("crie um com: python deploy/codes.py criar \"Teste\" --teto 60")
         return 1
 
-    print(f"=== celular virtual -> {base} ===")
+    print(f"=== celular virtual -> {base} | motor: {motor or 'padrao'} ===")
     http = aiohttp.ClientSession()
     room = rtc.Room()
     mon = Monitor()
     ok = True
     try:
-        creds = await pedir_token(http, base, secret, codigo)
+        sessao = await entrar_ou_cadastrar(http, base, secret, email, senha, codigo)
+        creds = await pedir_token(http, base, secret, sessao, motor)
         _log(f"token ok: sala={creds['room']} ttl={creds['expires_in_s']}s")
 
         mon.anexar(room)
@@ -242,9 +287,17 @@ async def main() -> int:
         )
         _log("microfone publicado")
 
-        # o handshake que impede a saudacao de sair cortada
-        await room.local_participant.set_attributes({"app.avatar_ready": "1"})
-        _log("avisou app.avatar_ready=1")
+        # O handshake que impede a saudacao de sair cortada. O app real so'
+        # avisa quando JA esta recebendo o video do avatar, e nao ao entrar na
+        # sala. Avisar cedo demais faz o agente falar antes de o motor de
+        # avatar estar pronto, e a saudacao se perde - o que parecia defeito
+        # do bitHuman era este teste avisando antes da hora.
+        if await mon.esperar_video(timeout=45):
+            await room.local_participant.set_attributes({"app.avatar_ready": "1"})
+            _log("avisou app.avatar_ready=1 (depois do primeiro frame)")
+        else:
+            _log("FALHOU: avatar nao publicou video em 45s")
+            ok = False
 
         # saudacao: o agente fala assim que o app se anuncia
         comeco = mon.agora()
