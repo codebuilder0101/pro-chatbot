@@ -265,11 +265,32 @@ def build_tts() -> elevenlabs.TTS:
 def build_session() -> AgentSession:
     """AgentSession com LLM sentinela, e barge-in tratado como requisito.
 
-    Sobre os numeros de interrupcao: mode="vad" corta pelo sinal de voz, sem
-    esperar a transcricao. E o caminho mais curto para ficar abaixo dos 300 ms
-    exigidos. O preco e cortar em tosse e "aham", entao ligamos a deteccao de
-    falsa interrupcao: se em 1,2 s nao vier fala de verdade, o avatar retoma
-    de onde parou em vez de ficar mudo esperando o usuario.
+    Sobre os numeros de interrupcao, revisados em 20/10/2026 com dados de uso
+    real. A configuracao anterior era mode="vad", min_duration=0.2 e
+    min_words=0: qualquer 0,2 s de energia de audio cortava a IARA. Tosse,
+    "uhum" de concordancia, alguem falando ao fundo.
+
+    A aposta original era que `resume_false_interruption` consertaria isso
+    retomando a fala. **Ela nao funciona aqui**, e o proprio SDK avisa em todas
+    as sessoes: "audio output does not support pause, it will be ignored",
+    porque quem publica o audio e' o motor de avatar, nao a sessao. Ou seja,
+    ela calava e nao voltava.
+
+    Resultado medido entre 15 e 20/10: 46 de 196 turnos cancelados, 23%. O
+    usuario perguntava, a pergunta sumia, e a sensacao era de travamento.
+
+    O que mudou:
+      mode="adaptive"   detector ML que separa backchannel de interrupcao de
+                        verdade. Em producao ele so' liga quando declarado
+                        explicitamente, que e' o caso aqui; se falhar, o SDK
+                        degrada sozinho para VAD.
+      min_words=2       segunda tranca: exige duas palavras reconhecidas pelo
+                        STT, nao apenas energia de audio.
+      min_duration=0.5  padrao do SDK, contra ruido curto.
+
+    O preco, consciente: interromper de proposito ficou um pouco mais lento,
+    porque agora exige fala de verdade. E a troca certa quando o avatar nao
+    consegue retomar de onde parou.
     """
     session = AgentSession(
         stt=build_stt(),
@@ -281,10 +302,12 @@ def build_session() -> AgentSession:
             turn_detection=_build_turn_detection(),
             interruption={
                 "enabled": True,
-                "mode": "vad",
-                "min_duration": 0.2,
-                "min_words": 0,
+                "mode": "adaptive",
+                "min_duration": 0.5,
+                "min_words": 2,
                 "false_interruption_timeout": 1.2,
+                # Fica ligado de proposito mesmo sem efeito com avatar: se um
+                # dia a saida de audio suportar pausa, volta a valer sozinho.
                 "resume_false_interruption": True,
                 "discard_audio_if_uninterruptible": True,
             },

@@ -58,9 +58,21 @@ class SessionLimits:
         self._last_activity = time.monotonic()
         self._started = time.monotonic()
         self._task: asyncio.Task | None = None
+        self._agente_falando = False
         self.reason: str | None = None
 
     def touch(self) -> None:
+        self._last_activity = time.monotonic()
+
+    def marcar_fala_do_agente(self, falando: bool) -> None:
+        """Liga e desliga a contagem de silencio enquanto a IARA fala.
+
+        Nao basta zerar o cronometro quando o estado muda: `agent_state_changed`
+        dispara na transicao, e uma resposta longa fica minutos sem transicao
+        nenhuma. Enquanto ela fala, o silencio do usuario e' so' educacao, e
+        contar isso derrubava a sessao no meio da frase.
+        """
+        self._agente_falando = falando
         self._last_activity = time.monotonic()
 
     def minutos_decorridos(self) -> float:
@@ -85,6 +97,13 @@ class SessionLimits:
                 if self._max_seconds and now - self._started >= self._max_seconds:
                     self.reason = "tempo_maximo"
                     break
+
+                # Enquanto a IARA fala, o usuario esta ouvindo, nao calado.
+                # Contar esse tempo como silencio derrubava a sessao no meio de
+                # uma resposta longa.
+                if self._agente_falando:
+                    self._last_activity = now
+                    continue
 
                 if (
                     self._silence_timeout
@@ -189,9 +208,25 @@ async def iara_session(ctx: JobContext) -> None:
         on_end_session=lambda: limits.finish_now("encerrado_pelo_fluxo"),
     )
 
-    # qualquer sinal de vida do usuario zera o cronometro de silencio
+    # Qualquer sinal de vida zera o cronometro de silencio.
     safe_on(session, "user_input_transcribed", lambda _ev: limits.touch())
     safe_on(session, "user_state_changed", lambda _ev: limits.touch())
+
+    # A IARA falando tambem conta como sessao viva, e isto NAO e' detalhe.
+    # Sem esta linha o cronometro media "tempo sem o usuario falar", e quem
+    # escuta em silencio uma resposta longa era punido por isso: uma resposta
+    # de 1400 caracteres leva uns 90 s para ser falada, exatamente o
+    # SESSION_SILENCE_TIMEOUT_S, e a sessao morria no meio da frase.
+    #
+    # Medido em 15/10/2026 nas sessoes reais: 10% das respostas do n8n passam
+    # de 800 caracteres, a maior tinha 2781, cerca de 3 minutos de fala, e
+    # TODAS as 18 sessoes terminaram por silencio, nenhuma pelo usuario.
+    def _estado_da_iara(ev: object) -> None:
+        estado = str(getattr(ev, "new_state", "") or "")
+        limits.marcar_fala_do_agente(estado == "speaking")
+
+    safe_on(session, "agent_state_changed", _estado_da_iara)
+    safe_on(session, "conversation_item_added", lambda _ev: limits.touch())
 
     if settings.measure_avatar_video:
         probe = AvatarVideoProbe(ctx.room, recorder)
